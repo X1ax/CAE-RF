@@ -29,7 +29,7 @@ def window_to_rgb_image(window: np.ndarray) -> np.ndarray:
 
 
 def save_image_to_bytes(img: np.ndarray) -> bytes:
-    """将 float32 图像转为 uint8 并编码为 PNG bytes（模拟完整流程）"""
+    
     img_uint8 = (img * 255).clip(0, 255).astype(np.uint8)
     from io import BytesIO
     buf = BytesIO()
@@ -142,5 +142,6 @@ if __name__ == "__main__":
 
 
     benchmark(CSV_PATH)
+
 
 
