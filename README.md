@@ -10,33 +10,22 @@ A multi-class network intrusion detection framework based on **ECA-CAE (Efficien
 ## Project Structure
 
 ```
-.
-├── eca_cae_multiclass_only.py       # CICIDS2017 experiment entry point
-├── eca_cae_can_multiclass.py        # Car Hacking CAN experiment entry point
+ECA-CAE+RF/
 │
-├── CICIDS2017_images/               # CICIDS2017 image dataset (prepare manually)
-│   ├── 0/                           # BENIGN
-│   ├── 1/                           # DoS
-│   ├── 2/                           # PortScan
-│   ├── 3/                           # BruteForce
-│   ├── 4/                           # WebAttack
-│   ├── 5/                           # Bot
-│   └── feature_columns.pkl          # Feature name list (optional, 80-dim)
+├── In-vehicle_network/                  # Car Hacking CAN bus experiments
+│   ├── IDS for Known Attacks/           # 5-class supervised classification
+│   │   ├── ConversionTime_Test.py       # Benchmark: measures average CSV → PNG conversion time (5-fold)
+│   │   ├── Feature_Mapping.py           # CSV → 9×9×3 PNG image converter
+│   │   └── model.py                     # ECA-CAE + Random Forest training & evaluation
+│   │
+│   └── IDS for Unknown Attacks/         # Open-set / anomaly detection
+│       ├── Feature Mapping.py           # CSV → 9×9×3 PNG image converter
+│       └── model.py                     # ECA-CAE + anomaly detection model
 │
-├── Car_Hacking_images/              # CAN image dataset (prepare manually)
-│   ├── 0/                           # DoS
-│   ├── 1/                           # Gear Spoofing
-│   ├── 2/                           # Fuzzy
-│   ├── 3/                           # RPM Spoofing
-│   ├── 4/                           # Normal
-│   └── feature_columns.pkl          # Feature name list (optional, 9-dim)
-│
-└── results_CAE_RF/                  # Output directory (auto-created)
-    ├── models/                      # Saved model weights
-    ├── plots/                       # Training curves, confusion matrices, ROC curves,
-    │                                #   feature importance plots
-    ├── reports/                     # Metric reports and feature importance CSVs
-    └── attention_maps/              # Saliency maps and ECA channel weight heatmaps
+└── extra-vehicle_network/               # CICIDS2017 network traffic experiments
+    ├── ConversionTime_Test.py           # Benchmark: measures average CSV → PNG conversion time (5-fold)
+    ├── Feature_Mapping.py               # CSV → 9×9×3 PNG image converter
+    └── model.py                         # ECA-CAE + Random Forest training & evaluation
 ```
 
 ---
@@ -117,6 +106,107 @@ Raw CSV data must be pre-processed into `9×9×3` PNG images and placed under `C
 
 ---
 
+## Data Preprocessing
+
+Both datasets must be converted from raw CSV format to `9×9×3` PNG images before running the experiments. The converter scripts are named `Feature_Mapping.py` and are located inside each experiment folder.
+
+### Step 1 — Prepare raw CSV files
+
+Place your raw CSV files in the corresponding dataset directories expected by each script:
+
+```
+# CICIDS2017 (extra-vehicle network)
+./dataset/CICIDS2017_with_Timestamp.csv
+
+# Car Hacking CAN (in-vehicle network)
+./dataset/Car_Hacking_with_Timestamp.csv
+```
+
+The CICIDS2017 CSV must contain a `Label` column and a `Timestamp` column. The CAN CSV must contain `Timestamp`, `ID`, `Data0`–`Data7`, and `Label` columns.
+
+### Step 2 — Convert CICIDS2017 to images
+
+```bash
+python extra-vehicle_network/Feature_Mapping.py
+```
+
+**How it works:**
+
+Each record has 80 features. A sliding window of **3 consecutive records** (stride = 3, no overlap) forms one sample. The resulting `3×80 = 240` values are padded to 243 and mapped into a `9×9×3` RGB image using the following index formula:
+
+```
+flat_index → channel  c = flat_index // 81
+           → row      i = (flat_index % 81) // 9
+           → column   j = (flat_index % 81) % 9
+```
+
+To keep the dataset balanced, majority classes are capped at a configurable window limit (`MAJORITY_CLASS_LIMITS`), while minority classes (WebAttack, Bot, Infiltration) are fully retained.
+
+**Output:**
+
+```
+CICIDS2017_images/
+├── 0/ … 5/       # PNG images grouped by class label
+├── scaler.pkl    # Fitted MinMaxScaler
+└── feature_columns.pkl
+```
+
+### Step 3 — Convert Car Hacking CAN to images
+
+```bash
+python "In-vehicle_network/IDS for Known Attacks/Feature_Mapping.py"
+```
+
+**How it works:**
+
+Each record has 9 features (CAN ID + Data0–Data7). A sliding window of **27 consecutive records** (stride = 27, no overlap) forms one sample. The `27×9` window maps directly into a `9×9×3` RGB image using:
+
+```
+timestep t → channel  c = t // 9
+           → row      i = t % 9
+feature  f → column   j = f
+```
+
+The script first segments the data by attack type (splitting on label boundaries), then generates non-overlapping windows within each segment to prevent label leakage across attack transitions.
+
+**Output:**
+
+```
+Car_Hacking_images/
+├── 0/ … 4/       # PNG images grouped by class label
+├── scaler.pkl    # Fitted MinMaxScaler
+└── feature_columns.pkl
+```
+
+### Conversion time benchmark (optional)
+
+`ConversionTime_Test.py` measures the average time to convert a single raw record into a `9×9×3` PNG image. It uses **5-fold cross-validation** and reports `mean ± std` per sample across folds, along with single-threaded throughput. Run it after the images have been generated to validate conversion efficiency:
+
+```bash
+# CICIDS2017
+python extra-vehicle_network/ConversionTime_Test.py
+
+# Car Hacking CAN
+python "In-vehicle_network/IDS for Known Attacks/ConversionTime_Test.py"
+```
+
+Example output:
+
+```
+📊  5-Fold Benchmark Results
+=======================================================
+  Per-fold means (µs): ['12.34', '11.98', '12.10', '12.45', '12.22']
+
+  ✅ Mean ± Std (per sample):
+     12.2180 ± 0.1721  µs
+     0.012218 ± 0.000172  ms
+  Throughput: ~81,843 samples/sec  (single-threaded)
+```
+
+The benchmark includes a **warm-up phase** (3 rounds over the first 50 samples per fold) to eliminate JIT and cache cold-start effects before the timed measurement begins.
+
+---
+
 ## Model Architecture
 
 ### ECA Module (Efficient Channel Attention)
@@ -180,16 +270,37 @@ All parameters are centrally managed in the `CONFIG` dictionary at the top of ea
 
 ## Usage
 
-**Run CICIDS2017 experiment:**
+**Full workflow (recommended order):**
 
 ```bash
-python eca_cae_multiclass_only.py
-```
+# ── Extra-vehicle network (CICIDS2017) ──────────────────────────────
+# Step 1 — Convert raw CSV to images
+python extra-vehicle_network/Feature_Mapping.py
 
-**Run Car Hacking CAN experiment:**
+# Step 2 — (Optional) Benchmark conversion speed
+python extra-vehicle_network/ConversionTime_Test.py
 
-```bash
-python eca_cae_can_multiclass.py
+# Step 3 — Run ECA-CAE + RF experiment
+python extra-vehicle_network/model.py
+
+
+# ── In-vehicle network (Car Hacking CAN) — Known Attacks ────────────
+# Step 1 — Convert raw CSV to images
+python "In-vehicle_network/IDS for Known Attacks/Feature_Mapping.py"
+
+# Step 2 — (Optional) Benchmark conversion speed
+python "In-vehicle_network/IDS for Known Attacks/ConversionTime_Test.py"
+
+# Step 3 — Run ECA-CAE + RF experiment
+python "In-vehicle_network/IDS for Known Attacks/model.py"
+
+
+# ── In-vehicle network (Car Hacking CAN) — Unknown Attacks ──────────
+# Step 1 — Convert raw CSV to images
+python "In-vehicle_network/IDS for Unknown Attacks/Feature Mapping.py"
+
+# Step 2 — Run anomaly detection model
+python "In-vehicle_network/IDS for Unknown Attacks/model.py"
 ```
 
 Both scripts execute the following four-step pipeline:
@@ -205,6 +316,8 @@ Both scripts execute the following four-step pipeline:
 ---
 
 ## Output Files
+
+All results are written to `results_CAE_RF/` inside each experiment folder.
 
 | Path | Content |
 |------|---------|
@@ -223,25 +336,36 @@ Both scripts execute the following four-step pipeline:
 ## Pipeline Overview
 
 ```
-Raw CSV data  →  Pre-processing  →  9×9×3 PNG images
-                                          │
-                                          ▼
-                                   ┌─────────────┐
-                                   │  ECA-CAE    │  Unsupervised pre-training
-                                   │             │  (MSE reconstruction loss)
-                                   └──────┬──────┘
-                                          │  Flattened latent features
-                                          ▼
-                                   ┌─────────────┐
-                                   │    Random   │  Supervised multi-class
-                                   │    Forest   │  classification
-                                   └──────┬──────┘
-                                          │
-                          ┌───────────────┼───────────────┐
-                          ▼               ▼               ▼
-                   Classification    Feature          Attention
-                   Metrics & Plots   Importance       Visualization
-                   (CM, ROC, FPR)    (Grad-based)     (Saliency, ECA)
+Raw CSV data
+     │
+     ▼
+Feature_Mapping.py                   Feature_Mapping.py
+(extra-vehicle_network)              (In-vehicle_network / Known Attacks)
+Window=3, Stride=3, 80-dim           Window=27, Stride=27, 9-dim
+Balanced class sampling              Segment-aware windowing
+     │                                     │
+     └──────────────┬──────────────────────┘
+                    ▼
+           9×9×3 PNG images
+           [ConversionTime_Test.py: optional speed benchmark]
+                    │
+                    ▼
+             ┌─────────────┐
+             │  ECA-CAE    │  Unsupervised pre-training
+             │  model.py   │  (MSE reconstruction loss)
+             └──────┬──────┘
+                    │  Flattened latent features
+                    ▼
+             ┌─────────────┐
+             │    Random   │  Supervised multi-class
+             │    Forest   │  classification
+             └──────┬──────┘
+                    │
+     ┌──────────────┼──────────────┐
+     ▼              ▼              ▼
+Classification  Feature        Attention
+Metrics & Plots Importance     Visualization
+(CM, ROC, FPR)  (Grad-based)   (Saliency, ECA)
 ```
 
 ---
