@@ -26,9 +26,6 @@ WARMUP_RUNS = 3          # 每折正式计时前的预热次数（消除 JIT / c
 LABEL_MAP = {"DoS": 0, "Gear": 1, "Fuzzy": 2, "RPM": 3, "Normal": 4}
 
 
-# ────────────────────────────────────────────
-# 核心函数（从原脚本复制）
-# ────────────────────────────────────────────
 def window_to_rgb_image(window: np.ndarray) -> np.ndarray:
     img = np.zeros((IMG_H, IMG_W, CHANNELS), dtype=np.float32)
     for t in range(WINDOW_SIZE):
@@ -67,7 +64,7 @@ def load_and_prepare(csv_path: str):
     scaler = MinMaxScaler()
     features = scaler.fit_transform(features)
 
-    # 构建所有窗口（不重叠，与原脚本一致）
+    # 构建所有窗口
     windows, window_labels = [], []
     for i in range(0, len(features) - WINDOW_SIZE + 1, STRIDE):
         windows.append(features[i:i + WINDOW_SIZE])
@@ -114,7 +111,7 @@ def benchmark(csv_path: str):
     for fold_idx, (train_idx, test_idx) in enumerate(
             kf.split(windows), start=1):
 
-        fold_windows = windows[test_idx]   # 用 test split 做计时（更客观）
+        fold_windows = windows[test_idx]   # 用 test split 做计时
 
         # ── 预热（消除首次执行开销）──────────────────
         for _ in range(WARMUP_RUNS):
@@ -153,9 +150,6 @@ def benchmark(csv_path: str):
     print()
 
 
-# ────────────────────────────────────────────
-# 入口
-# ────────────────────────────────────────────
 if __name__ == "__main__":
     CSV_PATH = "./dataset/Car_Hacking_with_Timestamp.csv"   # ← 修改为你的路径
 
@@ -167,3 +161,4 @@ if __name__ == "__main__":
 
 
     benchmark(CSV_PATH)
+
