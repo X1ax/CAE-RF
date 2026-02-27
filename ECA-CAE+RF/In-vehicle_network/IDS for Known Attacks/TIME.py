@@ -14,7 +14,7 @@ from sklearn.model_selection import KFold
 from tqdm import tqdm
 
 # ────────────────────────────────────────────
-# 超参数（与原脚本保持一致）
+# 超参数
 # ────────────────────────────────────────────
 WINDOW_SIZE = 27
 STRIDE      = 27
@@ -164,5 +164,6 @@ if __name__ == "__main__":
             f"CSV not found: {CSV_PATH}\n"
             "Please update CSV_PATH at the bottom of this script."
         )
+
 
     benchmark(CSV_PATH)
