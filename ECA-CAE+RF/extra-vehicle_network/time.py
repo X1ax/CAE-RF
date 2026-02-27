@@ -35,7 +35,7 @@ MINORITY_CLASSES = ["WebAttack", "Bot", "Infiltration"]
 
 
 # ────────────────────────────────────────────
-# 核心函数（从原脚本复制）
+# 核心函数
 # ────────────────────────────────────────────
 def window_to_rgb_image(window: np.ndarray) -> np.ndarray:
     img = np.zeros((IMG_H, IMG_W, CHANNELS), dtype=np.float32)
@@ -216,3 +216,4 @@ if __name__ == "__main__":
 
 
     benchmark(CSV_PATH)
+
