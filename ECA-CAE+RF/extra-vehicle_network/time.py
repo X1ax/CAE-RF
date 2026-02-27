@@ -14,7 +14,7 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import KFold
 
 # ────────────────────────────────────────────
-# 超参数（与原脚本保持一致）
+# 超参数
 # ────────────────────────────────────────────
 WINDOW_SIZE = 3
 STRIDE      = 3
@@ -205,16 +205,14 @@ def benchmark(csv_path: str):
     print()
 
 
-# ────────────────────────────────────────────
-# 入口
-# ────────────────────────────────────────────
 if __name__ == "__main__":
-    CSV_PATH = "./dataset/CICIDS2017_with_Timestamp.csv"   # ← 修改为你的路径
+    CSV_PATH = "./dataset/CICIDS2017_with_Timestamp.csv"
 
     if not os.path.exists(CSV_PATH):
         raise FileNotFoundError(
             f"CSV not found: {CSV_PATH}\n"
             "Please update CSV_PATH at the bottom of this script."
         )
+
 
     benchmark(CSV_PATH)
