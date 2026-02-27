@@ -1,15 +1,3 @@
-"""
-完整的ECA-CAE监督学习系统 - CAN数据集版本
-修改内容：
-1. 删除未知攻击检测部分
-2. 类别调整：5类已知攻击 [DoS, Gear, Fuzzy, RPM, Normal]
-3. 特征维度：9个特征 (ID + Data0-Data7)
-4. 特征重要性：显示所有9个特征
-5. CAE训练：加入Loss历史曲线绘制
-6. [新增] 输出Final 5-Fold Metrics (Mean ± Std)，包含FPR
-7. [新增] 输出5-Fold Classification Report (Mean ± Std)，包含每个类别的FPR
-"""
-
 import os
 import numpy as np
 import pandas as pd
@@ -37,7 +25,7 @@ from sklearn.metrics import (
 )
 from scipy import stats
 
-# ==================== 配置参数 ====================
+
 CONFIG = {
     'img_size': (9, 9, 3),
     'batch_size': 64,
@@ -51,7 +39,7 @@ CONFIG = {
     'image_root': 'Car_Hacking_images',
     'output_dir': './results_CAE_RF',
 
-    # 类别配置
+    
     'known_classes': [0, 1, 2, 3, 4],
     'class_names': {
         0: 'DoS',
@@ -61,7 +49,7 @@ CONFIG = {
         4: 'Normal'
     },
 
-    # 特征配置
+    
     'feature_dim': 9,
 }
 
@@ -77,7 +65,7 @@ if torch.cuda.is_available():
 print(f"🖥️  Using device: {CONFIG['device']}")
 
 
-# ==================== 数据集类 ====================
+
 class CANDataset(Dataset):
     def __init__(self, image_paths, labels):
         self.image_paths = image_paths
@@ -100,7 +88,7 @@ class CANDataset(Dataset):
             return torch.zeros(3, 9, 9), label
 
 
-# ==================== ECA模块 ====================
+
 class ECAModule(nn.Module):
     def __init__(self, channels, gamma=2, b=1):
         super(ECAModule, self).__init__()
@@ -117,8 +105,7 @@ class ECAModule(nn.Module):
         return x * att_weights.expand_as(x), att_weights
 
 
-# ==================== ECA-CAE模型 ====================
-class ECACAE(nn.Module):
+
     def __init__(self):
         super(ECACAE, self).__init__()
         self.encoder = nn.Sequential(
@@ -167,7 +154,6 @@ class ECACAE(nn.Module):
         return features
 
 
-# ==================== 数据加载工具 ====================
 def load_image_dataset():
     image_paths = []
     labels = []
@@ -191,7 +177,6 @@ def get_dataloader(paths, labels, batch_size, shuffle=True):
                       num_workers=CONFIG['num_workers'], pin_memory=True)
 
 
-# ==================== 训练核心 (带历史记录) ====================
 def train_cae(model, train_loader, val_loader, epochs, device):
     optimizer = torch.optim.Adam(model.parameters(), lr=CONFIG['learning_rate'])
     criterion = nn.MSELoss()
@@ -232,7 +217,7 @@ def train_cae(model, train_loader, val_loader, epochs, device):
             best_val_loss = avg_val_loss
             torch.save(model.state_dict(), os.path.join(CONFIG['output_dir'], 'models', 'best_cae.pth'))
 
-    # 绘制Loss曲线
+    
     plt.figure(figsize=(10, 6))
     plt.plot(history['train_loss'], label='Train Loss', color='blue', linewidth=2)
     plt.plot(history['val_loss'], label='Validation Loss', color='orange', linewidth=2)
@@ -260,26 +245,22 @@ def extract_latent_features(model, loader, device):
     return np.vstack(features), np.concatenate(labels)
 
 
-# ==================== 辅助函数：计算FPR ====================
 def calculate_fpr_per_class(cm):
-    """
-    根据混淆矩阵计算每个类别的FPR
-    FPR = FP / (FP + TN)
-    """
+    
     n_classes = cm.shape[0]
     fprs = []
 
-    # 总体样本数
+    
     total_samples = np.sum(cm)
 
     for i in range(n_classes):
-        # True Positive
+        
         tp = cm[i, i]
-        # False Positive: 列和减去TP (预测为i但实际不是i)
+        
         fp = np.sum(cm[:, i]) - tp
-        # False Negative: 行和减去TP (实际为i但预测不是i)
+        
         fn = np.sum(cm[i, :]) - tp
-        # True Negative: 总数 - (TP + FP + FN)
+       
         tn = total_samples - (tp + fp + fn)
 
         denominator = fp + tn
@@ -289,7 +270,7 @@ def calculate_fpr_per_class(cm):
     return np.array(fprs)
 
 
-# ==================== 多分类实验 (5类) ====================
+
 def multiclass_experiment():
     print("\n" + "="*60)
     print("📊 Multi-class Classification (5 Classes - CAN Dataset)")
@@ -298,13 +279,13 @@ def multiclass_experiment():
     paths, labels = load_image_dataset()
     skf = StratifiedKFold(n_splits=CONFIG['k_folds'], shuffle=True, random_state=CONFIG['random_state'])
 
-    # 存储全局指标
+    
     global_metrics = {
         'acc': [], 'macro_f1': [], 'macro_prec': [], 'macro_rec': [], 'macro_fpr': []
     }
 
-    # 存储每个类别的详细指标 (用于计算Mean±Std)
-    # 结构: class_metrics[class_name][metric_name] = [list of values]
+    
+    
     class_metrics_history = defaultdict(lambda: defaultdict(list))
 
     last_model, last_rf, last_data = None, None, {}
@@ -332,25 +313,25 @@ def multiclass_experiment():
         rf.fit(X_train_feat, y_train_feat)
         y_pred = rf.predict(X_test_feat)
 
-        # 1. 计算基础全局指标
+        
         acc = accuracy_score(y_test_feat, y_pred)
         f1 = f1_score(y_test_feat, y_pred, average='macro')
         prec = precision_score(y_test_feat, y_pred, average='macro')
         rec = recall_score(y_test_feat, y_pred, average='macro')
 
-        # 2. 计算混淆矩阵及FPR
+        
         cm = confusion_matrix(y_test_feat, y_pred, labels=CONFIG['known_classes'])
         fprs = calculate_fpr_per_class(cm)
         macro_fpr = np.mean(fprs)
 
-        # 3. 存储全局指标
+        
         global_metrics['acc'].append(acc)
         global_metrics['macro_f1'].append(f1)
         global_metrics['macro_prec'].append(prec)
         global_metrics['macro_rec'].append(rec)
         global_metrics['macro_fpr'].append(macro_fpr)
 
-        # 4. 获取详细的Per-Class指标
+        
         p, r, f, _ = precision_recall_fscore_support(y_test_feat, y_pred, labels=CONFIG['known_classes'])
 
         for idx, cls_id in enumerate(CONFIG['known_classes']):
@@ -366,7 +347,7 @@ def multiclass_experiment():
         last_rf = rf
         last_data = {'X': X_test_feat, 'y': y_test_feat, 'pred': y_pred}
 
-    # ================= 打印 Final 5-Fold Metrics =================
+    
     print("\n" + "="*80)
     print(f"{'Final 5-Fold Global Metrics (Mean ± Std)':^80}")
     print("="*80)
@@ -378,12 +359,12 @@ def multiclass_experiment():
         std_val = np.std(values)
         ci = stats.t.interval(0.95, len(values)-1, loc=mean_val, scale=stats.sem(values)) if len(values) > 1 else (0,0)
 
-        # 格式化名称
+        
         disp_name = metric_name.replace('macro_', 'Macro ').replace('acc', 'Accuracy').upper()
         print(f"{disp_name:<20} | {mean_val:.4f}          | {std_val:.4f}          | [{ci[0]:.4f}, {ci[1]:.4f}]")
     print("="*80)
 
-    # ================= 打印 5-Fold Classification Report =================
+    
     print("\n" + "="*100)
     print(f"{'5-Fold Classification Report (Mean ± Std)':^100}")
     print("="*100)
@@ -411,7 +392,7 @@ def multiclass_experiment():
 
     print("-" * 100)
 
-    # 写入报告文件
+    
     with open(os.path.join(CONFIG['output_dir'], 'reports', 'final_5fold_metrics.txt'), 'w') as f:
         f.write("Final 5-Fold Global Metrics\n")
         f.write("="*50 + "\n")
@@ -425,8 +406,7 @@ def multiclass_experiment():
             for m_k, m_v in metrics.items():
                 f.write(f"  {m_k}: {np.mean(m_v):.4f} ± {np.std(m_v):.4f}\n")
 
-    # ================= 绘图部分 (Last Fold) =================
-    # 混淆矩阵
+    
     cm = confusion_matrix(last_data['y'], last_data['pred'])
     plt.figure(figsize=(10, 8))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
@@ -439,7 +419,7 @@ def multiclass_experiment():
     plt.savefig(os.path.join(CONFIG['output_dir'], 'plots', 'multiclass_confusion_matrix.png'), dpi=300)
     plt.close()
 
-    # ROC曲线
+    
     y_bin = label_binarize(last_data['y'], classes=CONFIG['known_classes'])
     y_score = last_rf.predict_proba(last_data['X'])
 
@@ -466,7 +446,6 @@ def multiclass_experiment():
     return last_model, last_rf
 
 
-# ==================== 特征重要性分析 (所有9个特征) ====================
 def analyze_feature_importance_merged(model, class_ids):
     print("\n" + "="*60)
     print("🔬 Feature Importance Analysis (All 9 Features)")
@@ -557,10 +536,10 @@ def analyze_feature_importance_merged(model, class_ids):
     print("  ✓ Saved merged feature importance plots.")
 
 
-# ==================== 可视化A: 9x9空间热力图 ====================
+
 def visualize_saliency_9x9(model, class_ids):
     print("\n" + "="*60)
-    print("🎨 A. Generating 9x9 Spatial Saliency Maps")
+    print("A. Generating 9x9 Spatial Saliency Maps")
     print("="*60)
     model.eval()
     criterion = nn.MSELoss()
@@ -605,10 +584,9 @@ def visualize_saliency_9x9(model, class_ids):
         plt.close()
 
 
-# ==================== 可视化B: ECA通道权重 ====================
 def visualize_eca_channel_heatmaps(model, class_ids):
     print("\n" + "="*60)
-    print("🎨 B. Generating ECA Channel Weights Heatmaps")
+    print("B. Generating ECA Channel Weights Heatmaps")
     print("="*60)
     model.eval()
 
@@ -663,19 +641,19 @@ def visualize_eca_channel_heatmaps(model, class_ids):
 
 
 
-# ==================== 主程序 ====================
+
 def main():
     print("\n" + "="*60)
-    print("🚗 ECA-CAE System for CAN Dataset (5-Class Classification)")
+    print("ECA-CAE System for CAN Dataset (5-Class Classification)")
     print("="*60)
 
-    # 1. 多分类实验 (5类, 5折CV，含详细FPR报告)
+    
     model, rf = multiclass_experiment()
 
-    # 2. 特征重要性分析 (所有9个特征)
+    
     analyze_feature_importance_merged(model, CONFIG['known_classes'])
 
-    # 3. 可视化
+    
     visualize_saliency_9x9(model, CONFIG['known_classes'])
     visualize_eca_channel_heatmaps(model, CONFIG['known_classes'])
 
@@ -685,4 +663,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()
