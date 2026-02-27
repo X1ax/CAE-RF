@@ -1,8 +1,3 @@
-"""
-Benchmark: 测量每条原始数据转换为 9×9×3 RGB 图像的平均时间
-使用 5-fold 交叉验证，以 mean ± std 形式输出结果
-"""
-
 import os
 import time
 import numpy as np
@@ -13,15 +8,12 @@ from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import KFold
 from tqdm import tqdm
 
-# ────────────────────────────────────────────
-# 超参数
-# ────────────────────────────────────────────
 WINDOW_SIZE = 27
 STRIDE      = 27
 FEATURE_DIM = 9
 IMG_H, IMG_W, CHANNELS = 9, 9, 3
-N_SPLITS    = 5          # K-fold 折数
-WARMUP_RUNS = 3          # 每折正式计时前的预热次数（消除 JIT / cache 影响）
+N_SPLITS    = 5          
+WARMUP_RUNS = 3          
 
 LABEL_MAP = {"DoS": 0, "Gear": 1, "Fuzzy": 2, "RPM": 3, "Normal": 4}
 
@@ -49,9 +41,6 @@ def majority_label(window_labels):
     return LABEL_MAP[Counter(window_labels).most_common(1)[0][0]]
 
 
-# ────────────────────────────────────────────
-# 数据加载
-# ────────────────────────────────────────────
 def load_and_prepare(csv_path: str):
     print(f"📂 Loading CSV: {csv_path}")
     df = pd.read_csv(csv_path)
@@ -64,7 +53,7 @@ def load_and_prepare(csv_path: str):
     scaler = MinMaxScaler()
     features = scaler.fit_transform(features)
 
-    # 构建所有窗口
+    
     windows, window_labels = [], []
     for i in range(0, len(features) - WINDOW_SIZE + 1, STRIDE):
         windows.append(features[i:i + WINDOW_SIZE])
@@ -76,15 +65,9 @@ def load_and_prepare(csv_path: str):
     return windows, window_labels
 
 
-# ────────────────────────────────────────────
-# 单次转换计时（window → RGB image → PNG bytes）
-# ────────────────────────────────────────────
+
 def time_conversion_for_fold(windows: np.ndarray) -> float:
-    """
-    对给定的一组窗口逐条计时，返回每条数据的平均耗时（秒）。
-    计时范围：window_to_rgb_image + 图像编码（PNG bytes），
-    与实际落盘流程完全对应。
-    """
+    
     elapsed_per_sample = []
     for w in windows:
         t0 = time.perf_counter()
@@ -95,15 +78,13 @@ def time_conversion_for_fold(windows: np.ndarray) -> float:
     return np.mean(elapsed_per_sample)
 
 
-# ────────────────────────────────────────────
-# 主流程
-# ────────────────────────────────────────────
+
 def benchmark(csv_path: str):
     windows, window_labels = load_and_prepare(csv_path)
 
     kf = KFold(n_splits=N_SPLITS, shuffle=True, random_state=42)
 
-    fold_means = []   # 每折的每样本平均转换时间（秒）
+    fold_means = []  
 
     print(f"\n⏱  Running {N_SPLITS}-fold benchmark "
           f"(warmup={WARMUP_RUNS} runs per fold)...\n")
@@ -111,14 +92,14 @@ def benchmark(csv_path: str):
     for fold_idx, (train_idx, test_idx) in enumerate(
             kf.split(windows), start=1):
 
-        fold_windows = windows[test_idx]   # 用 test split 做计时
+        fold_windows = windows[test_idx]  
 
-        # ── 预热（消除首次执行开销）──────────────────
+        
         for _ in range(WARMUP_RUNS):
             for w in fold_windows[:min(50, len(fold_windows))]:
                 _ = window_to_rgb_image(w)
 
-        # ── 正式计时 ─────────────────────────────────
+        
         mean_t = time_conversion_for_fold(fold_windows)
         fold_means.append(mean_t)
 
@@ -126,10 +107,10 @@ def benchmark(csv_path: str):
               f"samples={len(fold_windows):,} | "
               f"mean={mean_t*1e6:.2f} µs/sample")
 
-    # ── 汇总 ─────────────────────────────────────────
+    
     fold_means = np.array(fold_means)
     overall_mean = fold_means.mean()
-    overall_std  = fold_means.std(ddof=1)   # 样本标准差
+    overall_std  = fold_means.std(ddof=1)   
 
     print("\n" + "=" * 55)
     print("📊  5-Fold Benchmark Results")
@@ -142,7 +123,7 @@ def benchmark(csv_path: str):
     print(f"     {overall_mean:.8f} ± {overall_std:.8f}  s")
     print("=" * 55)
 
-    # ── 吞吐量参考 ───────────────────────────────────
+    
     if overall_mean > 0:
         throughput = 1.0 / overall_mean
         print(f"\n  Throughput: ~{throughput:.1f} samples/sec  "
@@ -151,7 +132,7 @@ def benchmark(csv_path: str):
 
 
 if __name__ == "__main__":
-    CSV_PATH = "./dataset/Car_Hacking_with_Timestamp.csv"   # ← 修改为你的路径
+    CSV_PATH = "./dataset/Car_Hacking_with_Timestamp.csv"   
 
     if not os.path.exists(CSV_PATH):
         raise FileNotFoundError(
@@ -161,4 +142,5 @@ if __name__ == "__main__":
 
 
     benchmark(CSV_PATH)
+
 
