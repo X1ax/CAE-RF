@@ -43,13 +43,7 @@ def normalize_features(features):
 
 
 def window_to_rgb_image(window):
-    """
-    将27×9的窗口映射到9×9×3的RGB图像
-    映射逻辑：
-    - 时间步t的通道: c = t // 9
-    - 时间步t的行: i = t % 9
-    - 特征f的列: j = f
-    """
+    
     img = np.zeros((IMG_H, IMG_W, CHANNELS), dtype=np.float32)
 
     for t in range(WINDOW_SIZE):
@@ -62,11 +56,7 @@ def window_to_rgb_image(window):
 
 
 def image_to_features(img, scaler=None):
-    """
-    从9×9×3的RGB图像反推原始特征
-    返回27×9的窗口
-    如果提供scaler，则反归一化
-    """
+    
     window = np.zeros((WINDOW_SIZE, FEATURE_DIM), dtype=np.float32)
 
     for t in range(WINDOW_SIZE):
@@ -75,7 +65,7 @@ def image_to_features(img, scaler=None):
         for f in range(FEATURE_DIM):
             window[t, f] = img[i, f, c]
 
-    # 反归一化
+    
     if scaler is not None:
         window = scaler.inverse_transform(window)
 
@@ -112,7 +102,7 @@ def generate_windows_in_segment(features, labels, start, end):
             "label": majority_label(window_labels)
         })
 
-        idx += STRIDE  # 不重叠
+        idx += STRIDE  
 
     return windows
 
@@ -123,33 +113,33 @@ def save_image(img, path):
 
 
 def generate_full_image_dataset(csv_path):
-    # 加载数据
+    
     features, labels = load_and_sort_csv(csv_path)
 
-    # 归一化
+    
     print("🔄 Normalizing features...")
     features, scaler = normalize_features(features)
 
-    # 创建输出目录
+    
     os.makedirs(OUTPUT_ROOT, exist_ok=True)
 
-    # 保存scaler
+    
     scaler_path = os.path.join(OUTPUT_ROOT, "scaler.pkl")
     with open(scaler_path, 'wb') as f:
         pickle.dump(scaler, f)
     print(f"✓ Scaler saved to {scaler_path}")
 
-    # 保存特征列名（用于后续分析）
+    
     feature_cols = ["ID"] + [f"Data{i}" for i in range(8)]
     feature_cols_path = os.path.join(OUTPUT_ROOT, "feature_columns.pkl")
     with open(feature_cols_path, 'wb') as f:
         pickle.dump(feature_cols, f)
     print(f"✓ Feature columns saved to {feature_cols_path}")
 
-    # 分割攻击段
+    
     segments = split_into_attack_segments(labels)
 
-    # 创建类别文件夹
+    
     for cid in LABEL_MAP.values():
         os.makedirs(os.path.join(OUTPUT_ROOT, str(cid)), exist_ok=True)
 
@@ -178,7 +168,7 @@ def generate_full_image_dataset(csv_path):
 
 
 def load_scaler(scaler_path=None):
-    """加载保存的scaler"""
+    
     if scaler_path is None:
         scaler_path = os.path.join(OUTPUT_ROOT, "scaler.pkl")
 
@@ -189,20 +179,20 @@ def load_scaler(scaler_path=None):
 
 
 def test_image_to_features_conversion():
-    """测试图像到特征的反向映射"""
+    
     print("\n" + "=" * 60)
     print("🧪 Testing image-to-features conversion...")
     print("=" * 60)
 
-    # 加载scaler
+    
     try:
         scaler = load_scaler()
     except FileNotFoundError:
         print("❌ Scaler not found. Please run the main process first.")
         return
 
-    # 读取一张测试图像
-    test_class = 4  # Normal类
+    
+    test_class = 4  
     test_dir = os.path.join(OUTPUT_ROOT, str(test_class))
 
     if not os.path.exists(test_dir):
@@ -214,14 +204,14 @@ def test_image_to_features_conversion():
         print(f"❌ No images found in {test_dir}")
         return
 
-    # 读取第一张图像
+    
     test_img_path = os.path.join(test_dir, test_images[0])
     test_img = np.array(Image.open(test_img_path)).astype(np.float32) / 255.0
 
-    # 反向映射（归一化版本）
+    
     recovered_features_norm = image_to_features(test_img, scaler=None)
 
-    # 反向映射（原始值）
+    
     recovered_features_orig = image_to_features(test_img, scaler=scaler)
 
     print(f"✓ Test image: {test_images[0]}")
@@ -231,13 +221,13 @@ def test_image_to_features_conversion():
     print(f"✓ Original feature range: [{recovered_features_orig.min():.4f}, {recovered_features_orig.max():.4f}]")
     print("\n✅ Image-to-features conversion successful!")
 
-    # 显示前3行的部分特征值
+    
     print(f"\n📊 Sample recovered features (first 3 rows, first 5 columns):")
     print(recovered_features_orig[:3, :5])
 
 
 if __name__ == "__main__":
-    csv_path = "./dataset/Car_Hacking_with_Timestamp.csv"  # 改成你的路径
+    csv_path = "./dataset/Car_Hacking_with_Timestamp.csv" 
 
     print("=" * 60)
     print("CAN Dataset to RGB Image Converter")
@@ -255,5 +245,5 @@ if __name__ == "__main__":
     print(f"{'Total':16s}: {total_images:6d} images")
     print(f"\nImages saved to: {OUTPUT_ROOT}/")
 
-    # 运行测试
+
     test_image_to_features_conversion()
